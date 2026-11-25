@@ -114,19 +114,17 @@ function parseMarkdown(mdText){
     const trimmed = section.trim();
     if(!trimmed) continue;
     
-    // Obtener título de la sección
     const titleMatch = trimmed.match(/^#{1,3}\s+(.+)$/m);
     const title = titleMatch ? titleMatch[1].trim() : 'Sin título';
     
-    // Limpiar markdown básico para el texto de búsqueda
     let cleanText = trimmed
-      .replace(/^#{1,3}\s+/gm, '')        // quitar encabezados markdown
-      .replace(/\*\*(.*?)\*\*/g, '$1')    // quitar bold
-      .replace(/\*(.*?)\*/g, '$1')        // quitar italic
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // quitar links pero mantener texto
-      .replace(/`([^`]+)`/g, '$1')        // quitar code inline
-      .replace(/^\s*[-*+]\s+/gm, '• ')    // limpiar listas
-      .replace(/\n{3,}/g, '\n\n');        // quitar líneas vacías múltiples
+      .replace(/^#{1,3}\s+/gm, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/^\s*[-*+]\s+/gm, '• ')
+      .replace(/\n{3,}/g, '\n\n');
     
     if(cleanText.trim().length < 10) continue;
     
@@ -141,7 +139,6 @@ function parseMarkdown(mdText){
     });
   }
   
-  // Si no se detectaron secciones, crear un doc con todo el contenido
   if(docs.length === 0){
     docs.push({
       text: mdText,
@@ -153,10 +150,27 @@ function parseMarkdown(mdText){
 }
 
 async function loadMarkdown(){
+  const dataEmpty = document.getElementById('dataEmpty');
+  const fileList = document.getElementById('fileList');
+  
   try{
-    const res = await fetch(MD_URL);
-    if(!res.ok) throw new Error(`No se pudo cargar ${MD_URL}: ${res.status}`);
+    dataEmpty.textContent = 'Cargando flavio.md…';
+    
+    const res = await fetch(MD_URL, { cache: 'no-cache' });
+    
+    if(res.status === 404){
+      throw new Error('Archivo flavio.md no encontrado en el servidor (404). Verifica que el archivo esté en la raíz del repositorio.');
+    }
+    if(!res.ok){
+      throw new Error(`Error HTTP ${res.status} al cargar flavio.md`);
+    }
+    
     const mdText = await res.text();
+    
+    if(!mdText || mdText.trim().length === 0){
+      throw new Error('El archivo flavio.md está vacío.');
+    }
+    
     const docs = parseMarkdown(mdText);
     
     for(const doc of docs){
@@ -167,18 +181,28 @@ async function loadMarkdown(){
     const st = index.stats();
     document.getElementById('statDocs').textContent = st.docs;
     document.getElementById('statTerms').textContent = st.terms;
-    document.getElementById('dataEmpty').style.display = 'none';
-    document.getElementById('fileList').innerHTML = `
+    dataEmpty.style.display = 'none';
+    fileList.innerHTML = `
       <div class="file-item">
         <span class="file-name">flavio.md</span>
-        <span class="file-rows">${docs.length} secciones</span>
+        <span class="file-rows">${docs.length} secciones • ${st.docs} documentos indexados</span>
       </div>
     `;
     
     return docs.length;
   }catch(err){
-    console.error(err);
-    document.getElementById('dataEmpty').textContent = 'Error cargando flavio.md: ' + err.message;
+    console.error('Error cargando flavio.md:', err);
+    dataEmpty.innerHTML = `
+      <div style="color: var(--danger); margin-bottom: 1rem;">
+        ❌ Error cargando flavio.md: ${escapeHtml(err.message)}
+      </div>
+      <div style="font-size: 0.85rem; color: var(--muted);">
+        <strong>Posibles soluciones:</strong><br>
+        1. Verifica que <code>flavio.md</code> exista en la raíz del repositorio<br>
+        2. Vuelve a desplegar en Cloudflare Pages<br>
+        3. Abre <code>flavio.md</code> directamente en el navegador para confirmar que es accesible
+      </div>
+    `;
     return 0;
   }
 }
@@ -292,7 +316,7 @@ document.getElementById('composer').onsubmit = async (e)=>{
   const q = input.value.trim();
   if(!q) return;
   if(!mdLoaded){
-    renderBot('Cargando datos de Flavio… espera un momento y vuelve a intentarlo.');
+    renderBot('Los datos de Flavio aún no se han cargado. Espera a que termine la carga de flavio.md y vuelve a intentarlo.');
     return;
   }
   renderUser(q);
@@ -318,6 +342,6 @@ loadMarkdown().then(count=>{
   if(count>0){
     renderBot(`Listo. He cargado los datos de <strong>Flavio Nottalgiovanni Sambucetti</strong> desde flavio.md (${count} secciones). Pregúntame lo que quieras.<br><br>Ejemplos: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su headline?”</em>`);
   } else {
-    renderBot('No se pudieron cargar los datos. Asegúrate de que flavio.md esté desplegado.');
+    renderBot('No se pudieron cargar los datos. Revisa el mensaje de error en el panel izquierdo.');
   }
 });
