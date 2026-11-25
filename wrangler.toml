@@ -2,21 +2,9 @@ name = "rag-linkedin-csv"
 compatibility_date = "2026-01-01"
 pages_build_output_dir = "."
 
-# ---------------------------------------------------------------
-# 1. KV Namespace (opcional: persistencia del índice en el edge)
-# ---------------------------------------------------------------
-# Crea un KV Namespace en Cloudflare (Workers & Pages → KV) y descomenta:
 [[kv_namespaces]]
 binding = "LINKEDIN_KV"
 id = "61d92ff1db7a4dccb6fa929890199b15"
-
-# ---------------------------------------------------------------
-# 2. Workers AI (respuestas generativas)
-# ---------------------------------------------------------------
-# Workers AI está disponible por defecto en Cloudflare Pages Functions.
-# No hace falta binding adicional. El modelo usado es:
-#   @cf/meta/llama-3.1-8b-instruct
-# (cambiable en functions/api/query.js)
 
 [observability]
 enabled = true
