@@ -11,7 +11,8 @@ import { RagIndex, deserializeIndex } from '../_rag/index.js';
 const AI_MODELS = [
   '@hf/microsoft/phi-3-mini-4k-instruct',
   '@cf/meta/llama-3-8b-instruct',
-  '@cf/meta/llama-3.1-8b-instruct'
+  '@cf/meta/llama-3.1-8b-instruct',
+  '@cf/cloudflare/clairic-flash'
 ];
 
 export const onRequestPost = async ({ env, request }) => {
