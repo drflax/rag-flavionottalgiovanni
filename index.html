@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RAG LinkedIn CSV — Pregunta sobre tus contactos</title>
+  <link rel="preload" as="style" href="style.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="shell">
+    <div class="brand">
+      <span class="mark">RAG</span> <span class="name">LinkedIn CSV</span>
+      <span class="tag">tus contactos, a tu disposición</span>
+    </div>
+    <div class="controls">
+      <button class="btn btn-outline" id="btnOpenData">📁 Cargar CSV de LinkedIn</button>
+      <button class="btn" id="btnClear">🗑️ Limpiar</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <aside class="panel" id="panelData">
+      <h2>Datos cargados</h2>
+      <div class="muted" id="dataEmpty">Aún no hay CSVs cargados. Arrastra o selecciona uno o más archivos exportados de LinkedIn (Conexiones, Experiencia, Educación, Mensajes…).</div>
+      <div class="file-list" id="fileList"></div>
+      <div class="stats" id="stats">
+        <div class="stat"><strong id="statDocs">0</strong><span>documentos</span></div>
+        <div class="stat"><strong id="statTerms">0</strong><span>términos únicos</span></div>
+      </div>
+    </aside>
+
+    <section class="chat">
+      <div class="messages" id="messages">
+        <div class="msg msg-bot">
+          <div class="bubble">Hola. Sube tus CSV de LinkedIn y luego pregúntame lo que quieras sobre tu red: <em>“¿con quién trabajo en Google?”</em>, <em>“contactos de marketing”</em>, <em>“¿dónde estudió Juan?”</em>, etc.</div>
+        </div>
+      </div>
+
+      <form class="composer" id="composer" novalidate>
+        <label class="sr-only" for="question">Tu pregunta</label>
+        <input
+          type="text"
+          id="question"
+          placeholder="Escribe tu pregunta sobre tus contactos de LinkedIn…"
+          autocomplete="off"
+          required
+        />
+        <button type="submit" id="btnAsk">Preguntar</button>
+      </form>
+      <div class="hint" id="hint"></div>
+    </section>
+  </main>
+
+  <footer class="shell muted small">
+    RAG local en el navegador. Los datos no salen de tu máquina a menos que desplegues el backend de Cloudflare Functions. <a href="#api">Ver API</a>
+  </footer>
+
+  <template id="tplFile">
+    <div class="file-item">
+      <span class="file-name"></span>
+      <span class="file-rows"></span>
+      <button class="file-remove" aria-label="Eliminar">×</button>
+    </div>
+  </template>
+
+  <template id="tplMsg">
+    <div class="msg"><div class="bubble"></div></div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
