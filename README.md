@@ -59,7 +59,7 @@ Si desplegas en Cloudflare Pages con Functions, puedes usar **Workers AI** para 
      binding = "LINKEDIN_KV"
      id = "tu-kv-id-aqui"
      ```
-3. **Modelo**: por defecto se usa `@cf/meta/llama-3.1-8b-instruct`. Puedes cambiarlo en `functions/api/query.js`.
+3. **Modelo**: por defecto se usa `@cf/meta/llama-3-8b-instruct`. Puedes cambiarlo en `functions/api/query.js`.
 4. Los endpoints disponibles son:
    - `POST /api/ingest` — sube un CSV (campo `file`) y lo indexa en KV.
    - `POST /api/query` — envía `{ "question": "..." }` y obtiene una respuesta generativa con Workers AI + los resultados de búsqueda como fuentes.

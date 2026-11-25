@@ -8,8 +8,8 @@
 
 import { RagIndex, deserializeIndex } from '../_rag/index.js';
 
-// Modelo Workers AI: clairic-flash
-const AI_MODEL = '@cf/cloudflare/clairic-flash';
+// Modelo Workers AI: texto generativo (chat)
+const AI_MODEL = '@cf/meta/llama-3-8b-instruct';
 
 export const onRequestPost = async ({ env, request }) => {
   try {
