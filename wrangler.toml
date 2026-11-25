@@ -1,13 +1,14 @@
 name = "rag-linkedin-csv"
 compatibility_date = "2026-01-01"
+pages_build_output_dir = "."
 
 # ---------------------------------------------------------------
 # 1. KV Namespace (opcional: persistencia del índice en el edge)
 # ---------------------------------------------------------------
 # Crea un KV Namespace en Cloudflare (Workers & Pages → KV) y descomenta:
-# [[kv_namespaces]]
-# binding = "LINKEDIN_KV"
-# id = "tu-kv-id-aqui"
+[[kv_namespaces]]
+binding = "LINKEDIN_KV"
+id = "61d92ff1db7a4dccb6fa929890199b15"
 
 # ---------------------------------------------------------------
 # 2. Workers AI (respuestas generativas)
