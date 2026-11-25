@@ -1,16 +1,10 @@
 /**
- * RAG LinkedIn CSV — Motor de búsqueda + Workers AI (Cloudflare)
- * - Modo local: TF-IDF + coseno en el navegador (sin claves de API)
- * - Modo Cloudflare: envía a /api/query (búsqueda + Workers AI para respuesta generativa)
- *
- * Soporta los CSV de LinkedIn Data Export:
- *   Profile, Positions, Education, Skills, Certifications, Invitations,
- *   Company Follows, Notes, Email Addresses, PhoneNumbers, Organizations,
- *   Rich_Media, Whatsapp Phone Numbers, Registration, SavedJobAlerts
+ * RAG LinkedIn CSV — Versión específica para Flavio Nottalgiovanni Sambucetti
+ * Motor TF-IDF + Workers AI para responder SOLO sobre los datos de Flavio
  */
 
-const API_BASE = ''; // mismo origen: /api/query y /api/ingest
-const USE_WORKERS_AI = true; // si true, intenta usar el backend de Cloudflare Pages
+const API_BASE = ''; // mismo origen: /api/query
+const USE_WORKERS_AI = true;
 
 // ---------- Stopwords ----------
 const STOPWORDS = new Set([
@@ -42,7 +36,7 @@ function tokenize(text){
     .filter(t => t.length > 1 && !STOPWORDS.has(t));
 }
 
-// ---------- Motor TF-IDF local ----------
+// ---------- Motor TF-IDF ----------
 class RagIndex {
   constructor(){ this.docs=[]; this.df=new Map(); this.idf=new Map(); this.vectors=[]; }
   add(doc){
@@ -107,9 +101,8 @@ class RagIndex {
 }
 
 const index = new RagIndex();
-const files = new Map(); // name -> { rows, headers, type }
+const files = new Map(); // name -> { rows, headers }
 
-// ---------- Parseadores ----------
 function parseCsv(text){
   const lines = text.split(/\r?\n/).filter(l => l.trim().length>0);
   if(lines.length===0) return { headers:[], rows:[] };
@@ -158,188 +151,198 @@ function csvTypeFromName(name){
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
 
-function buildDocument(row, source, type){
-  const get = (...keys) => {
-    for(const k of keys){
-      for(const rk of Object.keys(row)){
-        if(rk.toLowerCase().replace(/[ _]/g,'') === k.toLowerCase().replace(/[ _]/g,'')){
-          return row[rk];
-        }
-      }
-    }
-    return '';
-  };
+function getField(row, ...keys){
+  const normalizedKeys = keys.map(k => k.toLowerCase().replace(/[ _]/g,''));
+  for(const rk of Object.keys(row)){
+    const nk = rk.toLowerCase().replace(/[ _]/g,'');
+    if(normalizedKeys.includes(nk)) return row[rk];
+  }
+  return '';
+}
 
+function buildDocument(row, source, type){
   let text = '', meta = {};
 
   switch(type){
     case 'profile': {
-      const first = get('firstname')||'';
-      const last = get('lastname')||'';
-      const name = (first+' '+last).trim() || 'Perfil';
-      const headline = get('headline');
-      const summary = get('summary');
-      const industry = get('industry');
-      const location = get('geolocation')||get('location')||'';
-      const websites = get('websites');
+      const first = getField(row,'firstname')||'';
+      const last = getField(row,'lastname')||'';
+      const name = (first+' '+last).trim() || 'Flavio Nottalgiovanni Sambucetti';
+      const headline = getField(row,'headline')||'';
+      const summary = getField(row,'summary')||'';
+      const industry = getField(row,'industry')||'';
+      const location = getField(row,'geolocation','location')||'';
+      const websites = getField(row,'websites')||'';
+
       text = [
-        name ? `Perfil de LinkedIn: ${name}` : '',
+        `Perfil de LinkedIn de ${name}`,
         headline ? `Headline: ${headline}` : '',
         industry ? `Industria: ${industry}` : '',
         location ? `Ubicación: ${location}` : '',
-        summary ? `Resumen: ${summary}` : '',
+        summary ? `Resumen profesional: ${summary}` : '',
         websites ? `Webs: ${websites}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name, type:'profile', headline, industry, location, websites, source };
+
+      meta = { name, type:'profile', headline, industry, location, websites, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'positions': {
-      const company = get('companyname')||get('company');
-      const title = get('title');
-      const location = get('location');
-      const started = get('startedon')||get('start date');
-      const finished = get('finishedon')||get('end date');
-      const desc = get('description');
+      const company = getField(row,'companyname','company')||'';
+      const title = getField(row,'title')||'';
+      const location = getField(row,'location')||'';
+      const started = getField(row,'startedon','start date')||'';
+      const finished = getField(row,'finishedon','end date')||'';
+      const desc = getField(row,'description')||'';
+
       text = [
-        company ? `Empresa: ${company}` : '',
-        title ? `Cargo: ${title}` : '',
+        `Experiencia laboral: ${title || 'Cargo'} en ${company || 'Empresa'}`,
         location ? `Ubicación: ${location}` : '',
         started ? `Desde: ${started}` : '',
         finished ? `Hasta: ${finished}` : '',
         desc ? `Descripción: ${desc}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name: company||'Posición', type:'position', company, title, location, started, finished, source };
+
+      meta = { name: company||'Posición', type:'position', company, title, location, started, finished, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'education': {
-      const school = get('schoolname')||get('school');
-      const degree = get('degree name')||get('degree');
-      const start = get('start date');
-      const end = get('end date');
-      const notes = get('notes');
+      const school = getField(row,'schoolname','school')||'';
+      const degree = getField(row,'degree name','degree')||'';
+      const start = getField(row,'start date')||'';
+      const end = getField(row,'end date')||'';
+      const notes = getField(row,'notes')||'';
+
       text = [
-        school ? `Institución: ${school}` : '',
+        `Educación: ${school || 'Institución'}`,
         degree ? `Título: ${degree}` : '',
         start ? `Desde: ${start}` : '',
         end ? `Hasta: ${end}` : '',
         notes ? `Notas: ${notes}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name: school||'Educación', type:'education', school, degree, start, end, source };
+
+      meta = { name: school||'Educación', type:'education', school, degree, start, end, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'skills': {
-      const name = get('name');
+      const name = getField(row,'name')||'';
       text = `Habilidad: ${name}`;
-      meta = { name, type:'skill', skill: name, source };
+      meta = { name, type:'skill', skill: name, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'certifications': {
-      const name = get('name');
-      const authority = get('authority');
-      const url = get('url');
-      const started = get('startedon')||get('start date');
-      const finished = get('finishedon')||get('end date');
+      const name = getField(row,'name')||'';
+      const authority = getField(row,'authority')||'';
+      const url = getField(row,'url')||'';
+      const started = getField(row,'startedon','start date')||'';
+      const finished = getField(row,'finishedon','end date')||'';
+
       text = [
-        name ? `Certificación: ${name}` : '',
+        `Certificación: ${name}`,
         authority ? `Autoridad: ${authority}` : '',
         started ? `Desde: ${started}` : '',
         finished ? `Hasta: ${finished}` : '',
         url ? `URL: ${url}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name, type:'certification', authority, url, started, finished, source };
+
+      meta = { name, type:'certification', authority, url, started, finished, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'invitations': {
-      const from = get('from');
-      const to = get('to');
-      const sent = get('sent at');
-      const msg = get('message');
-      const direction = get('direction');
-      const name = to || from || 'Contacto';
+      const from = getField(row,'from')||'';
+      const to = getField(row,'to')||'';
+      const sent = getField(row,'sent at')||'';
+      const msg = getField(row,'message')||'';
+      const direction = getField(row,'direction')||'';
+
       text = [
-        direction ? `Dirección: ${direction}` : '',
+        `Invitación de LinkedIn: ${direction || 'saliente'}`,
         from ? `De: ${from}` : '',
         to ? `Para: ${to}` : '',
-        sent ? `Enviado: ${sent}` : '',
+        sent ? `Fecha: ${sent}` : '',
         msg ? `Mensaje: ${msg}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name, type:'invitation', from, to, sent, message: msg, direction, source };
+
+      meta = { name: to||from||'Contacto', type:'invitation', from, to, sent, message: msg, direction, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'companyfollows': {
-      const org = get('organization');
-      const followed = get('followed on');
+      const org = getField(row,'organization')||'';
+      const followed = getField(row,'followed on')||'';
+
       text = [
-        org ? `Sigue a la empresa: ${org}` : '',
+        `Empresa seguida en LinkedIn: ${org}`,
         followed ? `Seguido el: ${followed}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name: org||'Empresa seguida', type:'companyfollow', organization: org, followed, source };
+
+      meta = { name: org||'Empresa', type:'companyfollow', organization: org, followed, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'notes': {
-      const first = get('connection firstname')||get('firstname');
-      const last = get('connection lastname')||get('lastname');
-      const url = get('connection profile url')||get('profile url');
-      const note = get('note');
-      const created = get('created on');
+      const first = getField(row,'connection firstname','firstname')||'';
+      const last = getField(row,'connection lastname','lastname')||'';
+      const url = getField(row,'connection profile url','profile url')||'';
+      const note = getField(row,'note')||'';
+      const created = getField(row,'created on')||'';
       const name = (first+' '+last).trim()||'Nota';
+
       text = [
-        name ? `Nota sobre: ${name}` : '',
+        `Nota sobre contacto: ${name}`,
         note ? `Nota: ${note}` : '',
         created ? `Creada: ${created}` : '',
         url ? `Perfil: ${url}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name, type:'note', first, last, url, note, created, source };
+
+      meta = { name, type:'note', first, last, url, note, created, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'emails': {
-      const email = get('email address')||get('email');
+      const email = getField(row,'email address','email')||'';
       text = `Email: ${email}`;
-      meta = { name: email||'Email', type:'email', email, source };
+      meta = { name: email||'Email', type:'email', email, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'phones': {
-      const phone = get('phone number')||get('phone');
+      const phone = getField(row,'phone number','phone')||'';
       text = `Teléfono: ${phone}`;
-      meta = { name: phone||'Teléfono', type:'phone', phone, source };
+      meta = { name: phone||'Teléfono', type:'phone', phone, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'organizations': {
-      const name = get('name');
+      const name = getField(row,'name')||'';
       text = `Organización: ${name}`;
-      meta = { name, type:'organization', source };
+      meta = { name, type:'organization', source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'richmedia': {
-      const title = get('title')||get('name');
-      const url = get('url');
+      const title = getField(row,'title','name')||'';
+      const url = getField(row,'url')||'';
       text = [
-        title ? `Rich media: ${title}` : '',
+        `Rich media: ${title}`,
         url ? `URL: ${url}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name: title||'Rich media', type:'richmedia', url, source };
+      meta = { name: title||'Rich media', type:'richmedia', url, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'whatsapp': {
-      const number = get('whatsapp phone number')||get('phone');
+      const number = getField(row,'whatsapp phone number','phone')||'';
       text = `WhatsApp: ${number}`;
-      meta = { name: number||'WhatsApp', type:'whatsapp', phone: number, source };
+      meta = { name: number||'WhatsApp', type:'whatsapp', phone: number, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'registration': {
-      const name = get('name')||get('full name');
+      const name = getField(row,'name','full name')||'';
       text = `Registro: ${name}`;
-      meta = { name, type:'registration', source };
+      meta = { name, type:'registration', source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     case 'savedjobs': {
-      const title = get('title')||get('job title');
-      const company = get('company name')||get('company');
+      const title = getField(row,'title','job title')||'';
+      const company = getField(row,'company name','company')||'';
       text = [
-        title ? `Alerta de empleo: ${title}` : '',
+        `Alerta de empleo: ${title}`,
         company ? `Empresa: ${company}` : ''
       ].filter(Boolean).join('. ');
-      meta = { name: title||'Alerta empleo', type:'savedjob', title, company, source };
+      meta = { name: title||'Alerta empleo', type:'savedjob', title, company, source, persona:'Flavio Nottalgiovanni Sambucetti' };
       break;
     }
     default: {
@@ -348,7 +351,7 @@ function buildDocument(row, source, type){
         if(v) pairs.push(`${k}: ${v}`);
       }
       text = pairs.join('. ');
-      meta = { name: row['Nombre']||row['Name']||'Documento', type:'generic', source };
+      meta = { name: 'Documento', type:'generic', source, persona:'Flavio Nottalgiovanni Sambucetti' };
     }
   }
 
@@ -368,19 +371,11 @@ function ingestFile(name, text){
   return { ok:true, added, headers, rows: rows.length, type };
 }
 
-// ---------- Intenciones ----------
-function detectIntent(q){
-  const ql = q.toLowerCase();
-  const mCompany = ql.match(/en\s+([a-záéíóúñü0-9\s&]+?)(?:\?|$)/);
-  const mRole = ql.match(/cargo\s+(?:de\s+)?([a-záéíóúñü\s]+)/) || ql.match(/trabaj[aá]?\s+como\s+([a-záéíóúñü\s]+)/);
-  return { ql, mCompany, mRole };
-}
-
 // ---------- Respuesta local (TF-IDF) ----------
 function answerLocal(q){
   const results = index.search(q, 6);
   if(results.length===0){
-    return 'No encontré información relevante en tus CSV cargados. Prueba con otras palabras o asegúrate de haber subido los archivos de LinkedIn.';
+    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti en los CSV cargados.';
   }
   const seen = new Set();
   const items = [];
@@ -391,30 +386,20 @@ function answerLocal(q){
     items.push(r);
     if(items.length>=5) break;
   }
-  const intent = detectIntent(q);
-  let intro = '';
-  if(intent.mCompany){
-    const c = intent.mCompany[1].trim();
-    const hits = items.filter(r => (r.meta.company||r.meta.organization||'').toLowerCase().includes(c));
-    intro = hits.length ? `En <strong>${escapeHtml(c)}</strong> encontré: ` : `No encontré contactos con <strong>${escapeHtml(c)}</strong>. Resultados más parecidos: `;
-  } else if(intent.mRole){
-    intro = `Contactos con cargo relacionado: `;
-  } else {
-    intro = `Según tus archivos de LinkedIn, los resultados más relevantes son: `;
-  }
   const list = items.map(r=>{
+    const meta = r.meta;
     const chips = [];
-    if(r.meta.title) chips.push(`<em>${escapeHtml(r.meta.title)}</em>`);
-    if(r.meta.company) chips.push(`en <strong>${escapeHtml(r.meta.company)}</strong>`);
-    if(r.meta.organization) chips.push(`empresa: <strong>${escapeHtml(r.meta.organization)}</strong>`);
-    if(r.meta.skill) chips.push(`habilidad: <strong>${escapeHtml(r.meta.skill)}</strong>`);
-    let html = `<strong>${escapeHtml(r.meta.name)}</strong> ${chips.join(' ')}`;
-    if(r.meta.url) html += ` <a href="${escapeHtml(r.meta.url)}" target="_blank" rel="noopener">ver perfil</a>`;
-    html += ` <span style="font-size:.78rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(r.meta.type)} • ${escapeHtml(r.meta.source)}</span>`;
+    if(meta.title) chips.push(`<em>${escapeHtml(meta.title)}</em>`);
+    if(meta.company) chips.push(`en <strong>${escapeHtml(meta.company)}</strong>`);
+    if(meta.organization) chips.push(`empresa: <strong>${escapeHtml(meta.organization)}</strong>`);
+    if(meta.skill) chips.push(`habilidad: <strong>${escapeHtml(meta.skill)}</strong>`);
+    let html = `<strong>${escapeHtml(meta.name)}</strong> ${chips.join(' ')}`;
+    if(meta.url) html += ` <a href="${escapeHtml(meta.url)}" target="_blank" rel="noopener">ver perfil</a>`;
+    html += ` <span style="font-size:.78rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.type)} • ${escapeHtml(meta.source)}</span>`;
     return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}</div>`;
   }).join('');
   const scores = results.slice(0,3).map(r=>Math.round(r.score*100)).join(', ');
-  return `${intro}${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
+  return `Información sobre Flavio Nottalgiovanni Sambucetti:<br>${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
 }
 
 // ---------- Workers AI (backend Cloudflare) ----------
@@ -431,25 +416,24 @@ async function answerWithAI(q){
     }
     const data = await res.json();
 
-    // Si Workers AI falló, el backend devuelve fallback:true con resultados locales
     if(data.fallback){
       return renderLocalResults(data.results, q) +
         `<div style="margin-top:.6rem;font-size:.78rem;color:var(--danger)">⚠️ Workers AI no disponible (${escapeHtml(String(data.error||''))}). Mostrando resultados locales.</div>`;
     }
 
-    // Respuesta generativa de Workers AI
     let html = `<div style="font-size:0.95rem; line-height:1.6;">${escapeHtml(data.answer||'')}</div>`;
 
     if(data.results && data.results.length){
       html += `<div style="margin-top:1rem; border-top:1px solid var(--border); padding-top:0.75rem;">
-        <div style="font-size:0.78rem; color:var(--muted); margin-bottom:0.5rem;">📚 Fuentes relevantes:</div>
+        <div style="font-size:0.78rem; color:var(--muted); margin-bottom:0.5rem;">📚 Fuentes de Flavio:</div>
         ${data.results.slice(0,5).map(r=>{
+          const meta = r.meta || r;
           const chips = [];
-          if(r.title) chips.push(`<em>${escapeHtml(r.title)}</em>`);
-          if(r.company) chips.push(`en <strong>${escapeHtml(r.company)}</strong>`);
+          if(meta.title) chips.push(`<em>${escapeHtml(meta.title)}</em>`);
+          if(meta.company) chips.push(`en <strong>${escapeHtml(meta.company)}</strong>`);
           return `<div style="margin:.3rem 0;padding:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:0.88rem;">
-            <strong>${escapeHtml(r.name)}</strong> ${chips.join(' ')}
-            <span style="font-size:.72rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(r.type)} • ${escapeHtml(r.source)}</span>
+            <strong>${escapeHtml(meta.name)}</strong> ${chips.join(' ')}
+            <span style="font-size:.72rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.type)} • ${escapeHtml(meta.source)}</span>
           </div>`;
         }).join('')}
       </div>`;
@@ -465,15 +449,15 @@ async function answerWithAI(q){
   }
 }
 
-// Render de resultados locales (mismo formato que answerLocal pero aceptando array de resultados)
 function renderLocalResults(results, q){
   if(!results || results.length===0){
-    return 'No encontré información relevante en tus CSV cargados.';
+    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti.';
   }
   const seen = new Set();
   const items = [];
   for(const r of results){
-    const key = r.meta ? (r.meta.name + '|' + r.meta.type + '|' + r.meta.source) : (r.name+'|'+r.type+'|'+r.source);
+    const meta = r.meta || r;
+    const key = meta.name + '|' + meta.type + '|' + meta.source;
     if(seen.has(key)) continue;
     seen.add(key);
     items.push(r);
@@ -492,7 +476,7 @@ function renderLocalResults(results, q){
     return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}</div>`;
   }).join('');
   const scores = results.slice(0,3).map(r=>Math.round(r.score*100)).join(', ');
-  return `Según tus archivos de LinkedIn, los resultados más relevantes son:<br>${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
+  return `Información sobre Flavio Nottalgiovanni Sambucetti:<br>${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
 }
 
 // ---------- UI ----------
@@ -576,7 +560,7 @@ document.getElementById('btnClear').onclick = ()=>{
   index.docs=[]; index.df=new Map(); index.idf=new Map(); index.vectors=[]; files.clear();
   renderFileList();
   msgEl.innerHTML='';
-  renderBot('Datos limpiados. Sube tus CSV de LinkedIn cuando quieras.');
+  renderBot('Datos limpiados. Sube los CSV de LinkedIn de Flavio Nottalgiovanni Sambucetti.');
   hint('');
 };
 
@@ -606,4 +590,4 @@ document.getElementById('composer').onsubmit = async (e)=>{
 
 // Init
 renderFileList();
-renderBot('Listo. Sube tus archivos CSV de LinkedIn (de la carpeta LinkedInDataExport) y empieza a preguntar. <br><br>Ejemplos: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>');
+renderBot('Listo. Sube los archivos CSV de LinkedIn de <strong>Flavio Nottalgiovanni Sambucetti</strong> y empieza a preguntar. <br><br>Ejemplos: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su headline?”</em>');

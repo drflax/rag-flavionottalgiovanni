@@ -1,5 +1,6 @@
 /**
  * Cloudflare Pages Function — POST /api/query
+ * RAG específico para Flavio Nottalgiovanni Sambucetti.
  * Búsqueda en el índice (KV si está disponible) + respuesta generativa con Workers AI.
  *
  * Body: { question: string }
@@ -19,6 +20,8 @@ const AI_MODELS = [
   '@cf/meta/llama-2-7b-chat-hf-lora'
 ];
 
+const PERSONA = 'Flavio Nottalgiovanni Sambucetti';
+
 export const onRequestPost = async ({ env, request }) => {
   try {
     const { question } = await request.json();
@@ -32,7 +35,7 @@ export const onRequestPost = async ({ env, request }) => {
     // 1. Cargar índice desde KV (si existe)
     const index = await loadIndex(env.LINKEDIN_KV);
 
-    // 2. Buscar resultados relevantes
+    // 2. Buscar resultados relevantes (solo documentos de Flavio)
     const results = index.search(question, 8);
 
     // 3. Construir contexto para la IA
@@ -41,15 +44,22 @@ export const onRequestPost = async ({ env, request }) => {
       : 'No hay contexto disponible en los datos cargados.';
 
     // 4. Llamar a Workers AI (intenta varios modelos y formatos)
-    const systemPrompt = `Eres un asistente experto que responde preguntas sobre los datos de LinkedIn de un usuario.
-Tienes acceso a los siguientes documentos extraídos de sus archivos CSV de LinkedIn (Profile, Positions, Education, Skills, Certifications, Invitations, etc.).
+    const systemPrompt = `Eres un asistente experto que responde preguntas SOLO sobre ${PERSONA}, basándote en sus archivos CSV exportados de LinkedIn.
 
-Responde en español, de forma clara y concisa. Usa SOLO la información del contexto proporcionado.
-Si la respuesta no está en el contexto, di que no lo sabes.
-Cita las fuentes (nombre del archivo CSV) cuando sea relevante.
-No inventes datos.`;
+Tienes acceso a los siguientes documentos extraídos de sus archivos CSV (Profile, Positions, Education, Skills, Certifications, Invitations, etc.).
 
-    const userPrompt = `Contexto de LinkedIn:\n\n${context}\n\nPregunta: ${question}`;
+INSTRUCCIONES IMPORTANTES:
+- Responde ÚNICAMENTE sobre ${PERSONA}. No inventes datos sobre otras personas.
+- Responde en español, de forma clara y concisa.
+- Usa SOLO la información del contexto proporcionado.
+- Si la respuesta no está en el contexto, di que no lo sabes.
+- Cita las fuentes (nombre del archivo CSV) cuando sea relevante.
+- No inventes datos, cargos, empresas, fechas ni habilidades.
+
+Contexto de LinkedIn de ${PERSONA}:
+${context}`;
+
+    const userPrompt = `Pregunta sobre ${PERSONA}: ${question}`;
 
     let answer = '';
     let usedModel = null;
@@ -110,6 +120,7 @@ No inventes datos.`;
     return new Response(JSON.stringify({
       answer,
       model: usedModel,
+      persona: PERSONA,
       results: results.map(r => ({
         score: r.score,
         name: r.meta.name,
