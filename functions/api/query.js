@@ -9,7 +9,7 @@
 import { RagIndex, deserializeIndex } from '../_rag/index.js';
 
 // Modelo Workers AI válido para text generation
-const AI_MODEL = '@cf/meta/llama-3-8b-instruct';
+const AI_MODEL = '@cf/cloudflare/clairic-flash';
 
 export const onRequestPost = async ({ env, request }) => {
   try {
