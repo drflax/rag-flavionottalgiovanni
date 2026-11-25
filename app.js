@@ -335,8 +335,6 @@ document.getElementById('composer').onsubmit = async (e)=>{
 };
 
 // Init
-document.getElementById('btnOpenData').style.display='none';
-document.getElementById('btnClear').style.display='none';
 
 loadMarkdown().then(count=>{
   if(count>0){
