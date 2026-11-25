@@ -1,10 +1,11 @@
 /**
- * RAG LinkedIn CSV — Versión específica para Flavio Nottalgiovanni Sambucetti
- * Motor TF-IDF + Workers AI para responder SOLO sobre los datos de Flavio
+ * RAG Flavio Nottalgiovanni Sambucetti — Versión con archivo .md
+ * Lee flavio.md, construye índice TF-IDF local, opcional Workers AI para respuesta generativa.
  */
 
 const API_BASE = ''; // mismo origen: /api/query
 const USE_WORKERS_AI = true;
+const MD_URL = 'flavio.md';
 
 // ---------- Stopwords ----------
 const STOPWORDS = new Set([
@@ -101,286 +102,97 @@ class RagIndex {
 }
 
 const index = new RagIndex();
-const files = new Map(); // name -> { rows, headers }
+let mdLoaded = false;
 
-function parseCsv(text){
-  const lines = text.split(/\r?\n/).filter(l => l.trim().length>0);
-  if(lines.length===0) return { headers:[], rows:[] };
-  const sep = lines[0].includes(';') ? ';' : ',';
-  const headers = parseLine(lines[0], sep).map(h=>h.trim().replace(/"/g,''));
-  const rows = [];
-  for(let i=1;i<lines.length;i++){
-    const vals = parseLine(lines[i], sep);
-    const obj = {};
-    headers.forEach((h,idx)=> obj[h] = (vals[idx]||'').replace(/"/g,'').trim());
-    rows.push(obj);
-  }
-  return { headers, rows };
-}
-function parseLine(line, sep){
-  const out=[]; let cur=''; let inQ=false;
-  for(let i=0;i<line.length;i++){
-    const ch=line[i];
-    if(ch==='"'){ inQ=!inQ; continue; }
-    if(ch===sep && !inQ){ out.push(cur); cur=''; continue; }
-    cur+=ch;
-  }
-  out.push(cur);
-  return out;
-}
-
-function csvTypeFromName(name){
-  const n = name.toLowerCase();
-  if(n.includes('profile')) return 'profile';
-  if(n.includes('position')) return 'positions';
-  if(n.includes('education')) return 'education';
-  if(n.includes('skill')) return 'skills';
-  if(n.includes('certification')) return 'certifications';
-  if(n.includes('invitation')) return 'invitations';
-  if(n.includes('company follow') || n.includes('companyfollow')) return 'companyfollows';
-  if(n.includes('note')) return 'notes';
-  if(n.includes('email')) return 'emails';
-  if(n.includes('phone')) return 'phones';
-  if(n.includes('organization')) return 'organizations';
-  if(n.includes('rich media') || n.includes('rich_media')) return 'richmedia';
-  if(n.includes('whatsapp')) return 'whatsapp';
-  if(n.includes('registration')) return 'registration';
-  if(n.includes('saved job') || n.includes('savedjob')) return 'savedjobs';
-  return 'generic';
-}
-
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
-
-function getField(row, ...keys){
-  const normalizedKeys = keys.map(k => k.toLowerCase().replace(/[ _]/g,''));
-  for(const rk of Object.keys(row)){
-    const nk = rk.toLowerCase().replace(/[ _]/g,'');
-    if(normalizedKeys.includes(nk)) return row[rk];
-  }
-  return '';
-}
-
-function buildDocument(row, source, type){
-  let text = '', meta = {};
-
-  switch(type){
-    case 'profile': {
-      const first = getField(row,'firstname')||'';
-      const last = getField(row,'lastname')||'';
-      const name = (first+' '+last).trim() || 'Flavio Nottalgiovanni Sambucetti';
-      const headline = getField(row,'headline')||'';
-      const summary = getField(row,'summary')||'';
-      const industry = getField(row,'industry')||'';
-      const location = getField(row,'geolocation','location')||'';
-      const websites = getField(row,'websites')||'';
-
-      text = [
-        `Perfil de LinkedIn de ${name}`,
-        headline ? `Headline: ${headline}` : '',
-        industry ? `Industria: ${industry}` : '',
-        location ? `Ubicación: ${location}` : '',
-        summary ? `Resumen profesional: ${summary}` : '',
-        websites ? `Webs: ${websites}` : ''
-      ].filter(Boolean).join('. ');
-
-      meta = { name, type:'profile', headline, industry, location, websites, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'positions': {
-      const company = getField(row,'companyname','company')||'';
-      const title = getField(row,'title')||'';
-      const location = getField(row,'location')||'';
-      const started = getField(row,'startedon','start date')||'';
-      const finished = getField(row,'finishedon','end date')||'';
-      const desc = getField(row,'description')||'';
-
-      text = [
-        `Experiencia laboral: ${title || 'Cargo'} en ${company || 'Empresa'}`,
-        location ? `Ubicación: ${location}` : '',
-        started ? `Desde: ${started}` : '',
-        finished ? `Hasta: ${finished}` : '',
-        desc ? `Descripción: ${desc}` : ''
-      ].filter(Boolean).join('. ');
-
-      meta = { name: company||'Posición', type:'position', company, title, location, started, finished, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'education': {
-      const school = getField(row,'schoolname','school')||'';
-      const degree = getField(row,'degree name','degree')||'';
-      const start = getField(row,'start date')||'';
-      const end = getField(row,'end date')||'';
-      const notes = getField(row,'notes')||'';
-
-      text = [
-        `Educación: ${school || 'Institución'}`,
-        degree ? `Título: ${degree}` : '',
-        start ? `Desde: ${start}` : '',
-        end ? `Hasta: ${end}` : '',
-        notes ? `Notas: ${notes}` : ''
-      ].filter(Boolean).join('. ');
-
-      meta = { name: school||'Educación', type:'education', school, degree, start, end, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'skills': {
-      const name = getField(row,'name')||'';
-      text = `Habilidad: ${name}`;
-      meta = { name, type:'skill', skill: name, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'certifications': {
-      const name = getField(row,'name')||'';
-      const authority = getField(row,'authority')||'';
-      const url = getField(row,'url')||'';
-      const started = getField(row,'startedon','start date')||'';
-      const finished = getField(row,'finishedon','end date')||'';
-
-      text = [
-        `Certificación: ${name}`,
-        authority ? `Autoridad: ${authority}` : '',
-        started ? `Desde: ${started}` : '',
-        finished ? `Hasta: ${finished}` : '',
-        url ? `URL: ${url}` : ''
-      ].filter(Boolean).join('. ');
-
-      meta = { name, type:'certification', authority, url, started, finished, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'invitations': {
-      const from = getField(row,'from')||'';
-      const to = getField(row,'to')||'';
-      const sent = getField(row,'sent at')||'';
-      const msg = getField(row,'message')||'';
-      const direction = getField(row,'direction')||'';
-
-      text = [
-        `Invitación de LinkedIn: ${direction || 'saliente'}`,
-        from ? `De: ${from}` : '',
-        to ? `Para: ${to}` : '',
-        sent ? `Fecha: ${sent}` : '',
-        msg ? `Mensaje: ${msg}` : ''
-      ].filter(Boolean).join('. ');
-
-      meta = { name: to||from||'Contacto', type:'invitation', from, to, sent, message: msg, direction, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'companyfollows': {
-      const org = getField(row,'organization')||'';
-      const followed = getField(row,'followed on')||'';
-
-      text = [
-        `Empresa seguida en LinkedIn: ${org}`,
-        followed ? `Seguido el: ${followed}` : ''
-      ].filter(Boolean).join('. ');
-
-      meta = { name: org||'Empresa', type:'companyfollow', organization: org, followed, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'notes': {
-      const first = getField(row,'connection firstname','firstname')||'';
-      const last = getField(row,'connection lastname','lastname')||'';
-      const url = getField(row,'connection profile url','profile url')||'';
-      const note = getField(row,'note')||'';
-      const created = getField(row,'created on')||'';
-      const name = (first+' '+last).trim()||'Nota';
-
-      text = [
-        `Nota sobre contacto: ${name}`,
-        note ? `Nota: ${note}` : '',
-        created ? `Creada: ${created}` : '',
-        url ? `Perfil: ${url}` : ''
-      ].filter(Boolean).join('. ');
-
-      meta = { name, type:'note', first, last, url, note, created, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'emails': {
-      const email = getField(row,'email address','email')||'';
-      text = `Email: ${email}`;
-      meta = { name: email||'Email', type:'email', email, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'phones': {
-      const phone = getField(row,'phone number','phone')||'';
-      text = `Teléfono: ${phone}`;
-      meta = { name: phone||'Teléfono', type:'phone', phone, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'organizations': {
-      const name = getField(row,'name')||'';
-      text = `Organización: ${name}`;
-      meta = { name, type:'organization', source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'richmedia': {
-      const title = getField(row,'title','name')||'';
-      const url = getField(row,'url')||'';
-      text = [
-        `Rich media: ${title}`,
-        url ? `URL: ${url}` : ''
-      ].filter(Boolean).join('. ');
-      meta = { name: title||'Rich media', type:'richmedia', url, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'whatsapp': {
-      const number = getField(row,'whatsapp phone number','phone')||'';
-      text = `WhatsApp: ${number}`;
-      meta = { name: number||'WhatsApp', type:'whatsapp', phone: number, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'registration': {
-      const name = getField(row,'name','full name')||'';
-      text = `Registro: ${name}`;
-      meta = { name, type:'registration', source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    case 'savedjobs': {
-      const title = getField(row,'title','job title')||'';
-      const company = getField(row,'company name','company')||'';
-      text = [
-        `Alerta de empleo: ${title}`,
-        company ? `Empresa: ${company}` : ''
-      ].filter(Boolean).join('. ');
-      meta = { name: title||'Alerta empleo', type:'savedjob', title, company, source, persona:'Flavio Nottalgiovanni Sambucetti' };
-      break;
-    }
-    default: {
-      const pairs = [];
-      for(const [k,v] of Object.entries(row)){
-        if(v) pairs.push(`${k}: ${v}`);
+// ---------- Parseador de Markdown ----------
+function parseMarkdown(mdText){
+  const docs = [];
+  // Dividir por encabezados ## o #
+  const sections = mdText.split(/(?=^#{1,3}\s)/m);
+  
+  for(const section of sections){
+    const trimmed = section.trim();
+    if(!trimmed) continue;
+    
+    // Obtener título de la sección
+    const titleMatch = trimmed.match(/^#{1,3}\s+(.+)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : 'Sin título';
+    
+    // Limpiar markdown básico para el texto de búsqueda
+    let cleanText = trimmed
+      .replace(/^#{1,3}\s+/gm, '')        // quitar encabezados markdown
+      .replace(/\*\*(.*?)\*\*/g, '$1')    // quitar bold
+      .replace(/\*(.*?)\*/g, '$1')        // quitar italic
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // quitar links pero mantener texto
+      .replace(/`([^`]+)`/g, '$1')        // quitar code inline
+      .replace(/^\s*[-*+]\s+/gm, '• ')    // limpiar listas
+      .replace(/\n{3,}/g, '\n\n');        // quitar líneas vacías múltiples
+    
+    if(cleanText.trim().length < 10) continue;
+    
+    docs.push({
+      text: `${title}. ${cleanText}`,
+      meta: {
+        name: title,
+        type: 'markdown-section',
+        source: 'flavio.md',
+        persona: 'Flavio Nottalgiovanni Sambucetti'
       }
-      text = pairs.join('. ');
-      meta = { name: 'Documento', type:'generic', source, persona:'Flavio Nottalgiovanni Sambucetti' };
-    }
+    });
   }
-
-  return { text: text.trim(), meta };
+  
+  // Si no se detectaron secciones, crear un doc con todo el contenido
+  if(docs.length === 0){
+    docs.push({
+      text: mdText,
+      meta: { name: 'Flavio Nottalgiovanni Sambucetti - Perfil completo', type: 'markdown', source: 'flavio.md', persona: 'Flavio Nottalgiovanni Sambucetti' }
+    });
+  }
+  
+  return docs;
 }
 
-function ingestFile(name, text){
-  const { headers, rows } = parseCsv(text);
-  if(rows.length===0) return { ok:false, error:'El CSV no tiene filas de datos.' };
-  const type = csvTypeFromName(name);
-  let added=0;
-  for(const row of rows){
-    const doc = buildDocument(row, name, type);
-    if(doc.text){ index.add(doc); added++; }
+async function loadMarkdown(){
+  try{
+    const res = await fetch(MD_URL);
+    if(!res.ok) throw new Error(`No se pudo cargar ${MD_URL}: ${res.status}`);
+    const mdText = await res.text();
+    const docs = parseMarkdown(mdText);
+    
+    for(const doc of docs){
+      index.add(doc);
+    }
+    
+    mdLoaded = true;
+    const st = index.stats();
+    document.getElementById('statDocs').textContent = st.docs;
+    document.getElementById('statTerms').textContent = st.terms;
+    document.getElementById('dataEmpty').style.display = 'none';
+    document.getElementById('fileList').innerHTML = `
+      <div class="file-item">
+        <span class="file-name">flavio.md</span>
+        <span class="file-rows">${docs.length} secciones</span>
+      </div>
+    `;
+    
+    return docs.length;
+  }catch(err){
+    console.error(err);
+    document.getElementById('dataEmpty').textContent = 'Error cargando flavio.md: ' + err.message;
+    return 0;
   }
-  files.set(name, { rows, headers, type, count: rows.length });
-  return { ok:true, added, headers, rows: rows.length, type };
 }
 
 // ---------- Respuesta local (TF-IDF) ----------
 function answerLocal(q){
   const results = index.search(q, 6);
   if(results.length===0){
-    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti en los CSV cargados.';
+    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti en el archivo flavio.md.';
   }
   const seen = new Set();
   const items = [];
   for(const r of results){
-    const key = r.meta.name + '|' + r.meta.type + '|' + r.meta.source;
+    const key = r.meta.name + '|' + r.meta.source;
     if(seen.has(key)) continue;
     seen.add(key);
     items.push(r);
@@ -388,15 +200,9 @@ function answerLocal(q){
   }
   const list = items.map(r=>{
     const meta = r.meta;
-    const chips = [];
-    if(meta.title) chips.push(`<em>${escapeHtml(meta.title)}</em>`);
-    if(meta.company) chips.push(`en <strong>${escapeHtml(meta.company)}</strong>`);
-    if(meta.organization) chips.push(`empresa: <strong>${escapeHtml(meta.organization)}</strong>`);
-    if(meta.skill) chips.push(`habilidad: <strong>${escapeHtml(meta.skill)}</strong>`);
-    let html = `<strong>${escapeHtml(meta.name)}</strong> ${chips.join(' ')}`;
-    if(meta.url) html += ` <a href="${escapeHtml(meta.url)}" target="_blank" rel="noopener">ver perfil</a>`;
-    html += ` <span style="font-size:.78rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.type)} • ${escapeHtml(meta.source)}</span>`;
-    return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}</div>`;
+    let html = `<strong>${escapeHtml(meta.name)}</strong>`;
+    html += ` <span style="font-size:.78rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.source)}</span>`;
+    return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}<div style="font-size:.85rem;margin-top:.25rem;color:var(--muted)">${escapeHtml(r.text.substring(0,200))}${r.text.length>200?'…':''}</div></div>`;
   }).join('');
   const scores = results.slice(0,3).map(r=>Math.round(r.score*100)).join(', ');
   return `Información sobre Flavio Nottalgiovanni Sambucetti:<br>${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
@@ -405,10 +211,15 @@ function answerLocal(q){
 // ---------- Workers AI (backend Cloudflare) ----------
 async function answerWithAI(q){
   try{
+    const results = index.search(q, 8);
+    const context = results.length
+      ? results.map(r => `- ${r.meta.name}\n  ${r.text}`).join('\n\n')
+      : 'No hay contexto disponible.';
+
     const res = await fetch(`${API_BASE}/api/query`, {
       method:'POST',
       headers:{'content-type':'application/json'},
-      body: JSON.stringify({ question: q })
+      body: JSON.stringify({ question: q, context })
     });
     if(!res.ok){
       const err = await res.json().catch(()=>({}));
@@ -417,7 +228,7 @@ async function answerWithAI(q){
     const data = await res.json();
 
     if(data.fallback){
-      return renderLocalResults(data.results, q) +
+      return answerLocal(q) +
         `<div style="margin-top:.6rem;font-size:.78rem;color:var(--danger)">⚠️ Workers AI no disponible (${escapeHtml(String(data.error||''))}). Mostrando resultados locales.</div>`;
     }
 
@@ -428,12 +239,9 @@ async function answerWithAI(q){
         <div style="font-size:0.78rem; color:var(--muted); margin-bottom:0.5rem;">📚 Fuentes de Flavio:</div>
         ${data.results.slice(0,5).map(r=>{
           const meta = r.meta || r;
-          const chips = [];
-          if(meta.title) chips.push(`<em>${escapeHtml(meta.title)}</em>`);
-          if(meta.company) chips.push(`en <strong>${escapeHtml(meta.company)}</strong>`);
           return `<div style="margin:.3rem 0;padding:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:0.88rem;">
-            <strong>${escapeHtml(meta.name)}</strong> ${chips.join(' ')}
-            <span style="font-size:.72rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.type)} • ${escapeHtml(meta.source)}</span>
+            <strong>${escapeHtml(meta.name)}</strong>
+            <span style="font-size:.72rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.source)}</span>
           </div>`;
         }).join('')}
       </div>`;
@@ -447,36 +255,6 @@ async function answerWithAI(q){
   }catch(err){
     return answerLocal(q) + `<div style="margin-top:.6rem;font-size:.78rem;color:var(--danger)">⚠️ Backend no disponible (${escapeHtml(String(err.message))}). Modo local activado.</div>`;
   }
-}
-
-function renderLocalResults(results, q){
-  if(!results || results.length===0){
-    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti.';
-  }
-  const seen = new Set();
-  const items = [];
-  for(const r of results){
-    const meta = r.meta || r;
-    const key = meta.name + '|' + meta.type + '|' + meta.source;
-    if(seen.has(key)) continue;
-    seen.add(key);
-    items.push(r);
-    if(items.length>=5) break;
-  }
-  const list = items.map(r=>{
-    const meta = r.meta || r;
-    const chips = [];
-    if(meta.title) chips.push(`<em>${escapeHtml(meta.title)}</em>`);
-    if(meta.company) chips.push(`en <strong>${escapeHtml(meta.company)}</strong>`);
-    if(meta.organization) chips.push(`empresa: <strong>${escapeHtml(meta.organization)}</strong>`);
-    if(meta.skill) chips.push(`habilidad: <strong>${escapeHtml(meta.skill)}</strong>`);
-    let html = `<strong>${escapeHtml(meta.name)}</strong> ${chips.join(' ')}`;
-    if(meta.url) html += ` <a href="${escapeHtml(meta.url)}" target="_blank" rel="noopener">ver perfil</a>`;
-    html += ` <span style="font-size:.78rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.type)} • ${escapeHtml(meta.source)}</span>`;
-    return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}</div>`;
-  }).join('');
-  const scores = results.slice(0,3).map(r=>Math.round(r.score*100)).join(', ');
-  return `Información sobre Flavio Nottalgiovanni Sambucetti:<br>${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
 }
 
 // ---------- UI ----------
@@ -505,72 +283,16 @@ function renderUser(text){
   msgEl.appendChild(el);
   scrollBottom();
 }
-function renderFileList(){
-  const container = document.getElementById('fileList');
-  const empty = document.getElementById('dataEmpty');
-  const t = document.getElementById('tplFile');
-  container.innerHTML='';
-  if(files.size===0){ empty.style.display='block'; } else { empty.style.display='none'; }
-  for(const [name, f] of files){
-    const el = t.content.cloneNode(true);
-    el.querySelector('.file-name').textContent = name;
-    el.querySelector('.file-rows').textContent = `${f.rows} filas (${f.type})`;
-    el.querySelector('.file-remove').onclick = ()=> removeFile(name);
-    container.appendChild(el);
-  }
-  const st = index.stats();
-  document.getElementById('statDocs').textContent = st.docs;
-  document.getElementById('statTerms').textContent = st.terms;
-}
-function removeFile(name){
-  files.delete(name);
-  index.docs=[]; index.df=new Map(); index.idf=new Map(); index.vectors=[];
-  renderFileList();
-  hint('Índice reconstruido. Vuelve a subir los CSV que quieras conservar.');
-}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
 
-async function readFile(file){
-  return new Promise((res,rej)=>{
-    const r = new FileReader();
-    r.onload = ()=>res(r.result);
-    r.onerror = rej;
-    r.readAsText(file);
-  });
-}
-
-document.getElementById('btnOpenData').onclick = async ()=>{
-  const input = document.createElement('input');
-  input.type='file'; input.multiple=true; input.accept='.csv,.txt';
-  input.onchange = async (e)=>{
-    const arr = Array.from(e.target.files||[]);
-    if(arr.length===0) return;
-    for(const file of arr){
-      const text = await readFile(file);
-      const res = ingestFile(file.name, text);
-      if(!res.ok){ alert('Error en '+file.name+': '+res.error); continue; }
-    }
-    renderFileList();
-    hint(`Cargados ${files.size} archivo(s). Índice: ${index.stats().docs} documentos, ${index.stats().terms} términos.`);
-  };
-  input.click();
-};
-
-document.getElementById('btnClear').onclick = ()=>{
-  if(!confirm('¿Eliminar todos los datos cargados?')) return;
-  index.docs=[]; index.df=new Map(); index.idf=new Map(); index.vectors=[]; files.clear();
-  renderFileList();
-  msgEl.innerHTML='';
-  renderBot('Datos limpiados. Sube los CSV de LinkedIn de Flavio Nottalgiovanni Sambucetti.');
-  hint('');
-};
-
+// ---------- Eventos ----------
 document.getElementById('composer').onsubmit = async (e)=>{
   e.preventDefault();
   const input = document.getElementById('question');
   const q = input.value.trim();
   if(!q) return;
-  if(index.docs.length===0){
-    renderBot('Primero carga al menos un CSV de LinkedIn.');
+  if(!mdLoaded){
+    renderBot('Cargando datos de Flavio… espera un momento y vuelve a intentarlo.');
     return;
   }
   renderUser(q);
@@ -589,5 +311,13 @@ document.getElementById('composer').onsubmit = async (e)=>{
 };
 
 // Init
-renderFileList();
-renderBot('Listo. Sube los archivos CSV de LinkedIn de <strong>Flavio Nottalgiovanni Sambucetti</strong> y empieza a preguntar. <br><br>Ejemplos: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su headline?”</em>');
+document.getElementById('btnOpenData').style.display='none';
+document.getElementById('btnClear').style.display='none';
+
+loadMarkdown().then(count=>{
+  if(count>0){
+    renderBot(`Listo. He cargado los datos de <strong>Flavio Nottalgiovanni Sambucetti</strong> desde flavio.md (${count} secciones). Pregúntame lo que quieras.<br><br>Ejemplos: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su headline?”</em>`);
+  } else {
+    renderBot('No se pudieron cargar los datos. Asegúrate de que flavio.md esté desplegado.');
+  }
+});

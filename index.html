@@ -3,29 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RAG LinkedIn CSV — Pregunta sobre tus contactos</title>
+  <title>RAG Flavio Nottalgiovanni Sambucetti</title>
   <link rel="preload" as="style" href="style.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="shell">
     <div class="brand">
-      <span class="mark">RAG</span> <span class="name">LinkedIn CSV</span>
-      <span class="tag">tus contactos, a tu disposición</span>
-    </div>
-    <div class="controls">
-      <button class="btn btn-outline" id="btnOpenData">📁 Cargar CSV de LinkedIn</button>
-      <button class="btn" id="btnClear">🗑️ Limpiar</button>
+      <span class="mark">RAG</span> <span class="name">Flavio Nottalgiovanni Sambucetti</span>
+      <span class="tag">datos profesionales desde flavio.md</span>
     </div>
   </header>
 
   <main class="shell">
     <aside class="panel" id="panelData">
-      <h2>Datos cargados</h2>
-      <div class="muted" id="dataEmpty">Aún no hay CSVs cargados. Arrastra o selecciona uno o más archivos exportados de LinkedIn (Conexiones, Experiencia, Educación, Mensajes…).</div>
+      <h2>Fuente de datos</h2>
+      <div class="muted" id="dataEmpty">Cargando flavio.md…</div>
       <div class="file-list" id="fileList"></div>
       <div class="stats" id="stats">
-        <div class="stat"><strong id="statDocs">0</strong><span>documentos</span></div>
+        <div class="stat"><strong id="statDocs">0</strong><span>secciones</span></div>
         <div class="stat"><strong id="statTerms">0</strong><span>términos únicos</span></div>
       </div>
     </aside>
@@ -33,7 +29,7 @@
     <section class="chat">
       <div class="messages" id="messages">
         <div class="msg msg-bot">
-          <div class="bubble">Hola. Sube tus CSV de LinkedIn y luego pregúntame lo que quieras sobre tu red: <em>“¿con quién trabajo en Google?”</em>, <em>“contactos de marketing”</em>, <em>“¿dónde estudió Juan?”</em>, etc.</div>
+          <div class="bubble">Cargando datos de Flavio Nottalgiovanni Sambucetti desde flavio.md…</div>
         </div>
       </div>
 
@@ -42,7 +38,7 @@
         <input
           type="text"
           id="question"
-          placeholder="Escribe tu pregunta sobre tus contactos de LinkedIn…"
+          placeholder="Pregúntame sobre Flavio (empresas, habilidades, educación, experiencia…)…"
           autocomplete="off"
           required
         />
@@ -53,16 +49,8 @@
   </main>
 
   <footer class="shell muted small">
-    RAG local en el navegador. Los datos no salen de tu máquina a menos que desplegues el backend de Cloudflare Functions. <a href="#api">Ver API</a>
+    RAG con archivo Markdown. Los datos se leen de <code>flavio.md</code> y el índice se construye en el navegador. Workers AI genera respuestas si está disponible.
   </footer>
-
-  <template id="tplFile">
-    <div class="file-item">
-      <span class="file-name"></span>
-      <span class="file-rows"></span>
-      <button class="file-remove" aria-label="Eliminar">×</button>
-    </div>
-  </template>
 
   <template id="tplMsg">
     <div class="msg"><div class="bubble"></div></div>
