@@ -8,7 +8,7 @@
 
 import { RagIndex, deserializeIndex } from '../_rag/index.js';
 
-// Modelo Workers AI válido para text generation
+// Modelo Workers AI: clairic-flash
 const AI_MODEL = '@cf/cloudflare/clairic-flash';
 
 export const onRequestPost = async ({ env, request }) => {
@@ -32,7 +32,7 @@ export const onRequestPost = async ({ env, request }) => {
       ? results.map(r => `- Fuente: ${r.meta.source} (${r.meta.type})\n  ${r.text}`).join('\n\n')
       : 'No hay contexto disponible en los datos cargados.';
 
-    // 4. Llamar a Workers AI para respuesta generativa
+    // 4. Llamar a Workers AI (clairic-flash usa formato prompt)
     const prompt = `Eres un asistente experto que responde preguntas sobre los datos de LinkedIn de un usuario.
 Tienes acceso a los siguientes documentos extraídos de sus archivos CSV de LinkedIn (Profile, Positions, Education, Skills, Certifications, Invitations, etc.).
 
@@ -50,13 +50,29 @@ Pregunta: ${question}`;
     let usedModel = null;
     let lastAiError = null;
 
-    // Intento con el modelo principal
+    // Intento con clairic-flash (formato prompt)
     try {
       const aiResponse = await env.AI.run(AI_MODEL, { prompt });
       answer = aiResponse.response || String(aiResponse || '');
       usedModel = AI_MODEL;
     } catch (aiErr) {
       lastAiError = aiErr;
+    }
+
+    // Si falla, intentar formato messages como fallback
+    if (!usedModel) {
+      try {
+        const aiResponse = await env.AI.run(AI_MODEL, {
+          messages: [
+            { role: 'system', content: 'Eres un asistente experto en datos de LinkedIn. Responde en español usando solo el contexto proporcionado.' },
+            { role: 'user', content: `Contexto:\n${context}\n\nPregunta: ${question}` }
+          ]
+        });
+        answer = aiResponse.response || String(aiResponse || '');
+        usedModel = AI_MODEL;
+      } catch (aiErr2) {
+        lastAiError = aiErr2;
+      }
     }
 
     if (!usedModel) {
