@@ -103,6 +103,7 @@ class RagIndex {
 
 const index = new RagIndex();
 let mdLoaded = false;
+let fullMarkdown = '';
 
 // ---------- Parseador de Markdown ----------
 function parseMarkdown(mdText){
@@ -124,12 +125,14 @@ function parseMarkdown(mdText){
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/`([^`]+)`/g, '$1')
       .replace(/^\s*[-*+]\s+/gm, '• ')
-      .replace(/\n{3,}/g, '\n\n');
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     
-    if(cleanText.trim().length < 10) continue;
+    if(cleanText.length < 10) continue;
     
+    const startsWithTitle = cleanText.toLowerCase().startsWith(title.toLowerCase());
     docs.push({
-      text: `${title}. ${cleanText}`,
+      text: startsWithTitle ? cleanText : `${title}. ${cleanText}`,
       meta: {
         name: title,
         type: 'markdown-section',
@@ -154,7 +157,7 @@ async function loadMarkdown(){
   const fileList = document.getElementById('fileList');
   
   try{
-    dataEmpty.textContent = 'Cargando flavio.md…';
+    if(dataEmpty) dataEmpty.textContent = 'Cargando flavio.md…';
     
     const res = await fetch(MD_URL, { cache: 'no-cache' });
     
@@ -171,6 +174,7 @@ async function loadMarkdown(){
       throw new Error('El archivo flavio.md está vacío.');
     }
     
+    fullMarkdown = mdText;
     const docs = parseMarkdown(mdText);
     
     for(const doc of docs){
@@ -179,10 +183,12 @@ async function loadMarkdown(){
     
     mdLoaded = true;
     const st = index.stats();
-    document.getElementById('statDocs').textContent = st.docs;
-    document.getElementById('statTerms').textContent = st.terms;
-    dataEmpty.style.display = 'none';
-    fileList.innerHTML = `
+    const statDocs = document.getElementById('statDocs');
+    const statTerms = document.getElementById('statTerms');
+    if(statDocs) statDocs.textContent = st.docs;
+    if(statTerms) statTerms.textContent = st.terms;
+    if(dataEmpty) dataEmpty.style.display = 'none';
+    if(fileList) fileList.innerHTML = `
       <div class="file-item">
         <span class="file-name">flavio.md</span>
         <span class="file-rows">${docs.length} secciones • ${st.docs} documentos indexados</span>
@@ -192,7 +198,7 @@ async function loadMarkdown(){
     return docs.length;
   }catch(err){
     console.error('Error cargando flavio.md:', err);
-    dataEmpty.innerHTML = `
+    if(dataEmpty) dataEmpty.innerHTML = `
       <div style="color: var(--danger); margin-bottom: 1rem;">
         ❌ Error cargando flavio.md: ${escapeHtml(err.message)}
       </div>
@@ -207,77 +213,264 @@ async function loadMarkdown(){
   }
 }
 
-// ---------- Respuesta local (TF-IDF) ----------
-function answerLocal(q){
-  const results = index.search(q, 12);
-  if(results.length===0){
-    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti en el archivo flavio.md.<br><br>Intenta preguntar de forma más específica, por ejemplo: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su headline?”</em>';
-  }
-  const seen = new Set();
+// ---------- Extracción directa de flavio.md (fallback fiable) ----------
+function sectionByNumber(md, number){
+  const startRe = new RegExp(`^##\\s+${number}\\.\\s+.*$`, 'm');
+  const startMatch = startRe.exec(md);
+  if(!startMatch) return '';
+  const start = startMatch.index;
+  const rest = md.slice(start + startMatch[0].length);
+  const nextRe = new RegExp(`^##\\s+${number + 1}\\.\\s+`, 'm');
+  const nextMatch = nextRe.exec(rest);
+  return md.slice(start, nextMatch ? start + startMatch[0].length + nextMatch.index : md.length);
+}
+
+function cleanMdLine(line){
+  return line
+    .replace(/^\s*[-*+]\s+/, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+function extractCompanies(md){
+  const section = sectionByNumber(md, 4);
+  const lines = section.split('\n');
   const items = [];
-  for(const r of results){
-    const key = r.meta.name + '|' + r.meta.source;
-    if(seen.has(key)) continue;
-    seen.add(key);
-    items.push(r);
-    if(items.length>=8) break;
+  for(let i=0;i<lines.length;i++){
+    const m = lines[i].match(/^###\s+4\.\d+\.\s+(.+)$/);
+    if(!m) continue;
+    const name = cleanMdLine(m[1]);
+    let period = '';
+    for(let j=i+1;j<Math.min(i+7, lines.length);j++){
+      const p = lines[j].match(/\*\*Periodo:\*\*\s*(.+)$/);
+      if(p){ period = cleanMdLine(p[1]); break; }
+    }
+    items.push({ name, period });
   }
-  const list = items.map(r=>{
+  return items;
+}
+
+function extractSkills(md){
+  const section = sectionByNumber(md, 3);
+  const start = section.indexOf('### 3.1');
+  const end = section.indexOf('### 3.2');
+  const block = start >= 0 ? section.slice(start, end >= 0 ? end : section.length) : section;
+  return block.split('\n')
+    .filter(line => /^\s*\*\s+/.test(line))
+    .map(cleanMdLine)
+    .filter(Boolean);
+}
+
+function extractEducation(md){
+  return sectionByNumber(md, 7).split('\n')
+    .filter(line => /^\s*\*\s+/.test(line))
+    .map(cleanMdLine)
+    .filter(Boolean);
+}
+
+function extractField(md, label){
+  const re = new RegExp(`\\*\\*${label}:\\*\\*\\s*(.+)`);
+  const m = md.match(re);
+  return m ? cleanMdLine(m[1]) : '';
+}
+
+function extractSectionBullets(md, number){
+  return sectionByNumber(md, number).split('\n')
+    .filter(line => /^###\s+/.test(line) || /^\s*\*\s+/.test(line))
+    .map(line => {
+      const heading = line.match(/^###\s+(.+)$/);
+      return heading ? { heading: cleanMdLine(heading[1]) } : { text: cleanMdLine(line) };
+    })
+    .filter(item => item.heading || item.text);
+}
+
+function renderSection(items){
+  let html = '';
+  let inList = false;
+  for(const item of items){
+    if(item.heading){
+      if(inList){ html += '</ul>'; inList = false; }
+      html += `<div style="margin-top:.55rem"><strong>${escapeHtml(item.heading)}</strong></div>`;
+    }else{
+      if(!inList){ html += '<ul>'; inList = true; }
+      html += `<li>${escapeHtml(item.text)}</li>`;
+    }
+  }
+  if(inList) html += '</ul>';
+  return html;
+}
+
+const QUERY_SYNONYMS = [
+  [/(empresa|trabaj|experiencia|laboral|empleo|cargo|puesto|compañ|compan|trayectoria)/, 'experiencia laboral empresa trabajo desarrollador periodo responsabilidades'],
+  [/(habilidad|competencia|stack|tecnolog|sabe|conocimiento|herramienta|lenguaje)/, 'habilidades competencias técnicas desarrollo php cms sapui5'],
+  [/(estudi|formaci|educaci|titul|universidad|certific|curso)/, 'formación académica educación titulación certificación idep bcn'],
+  [/(headline|titular|profesi|ocupaci|qué hace|que hace)/, 'titular profesional desarrollador full stack gestor deportivo'],
+  [/(contact|email|correo|teléfono|telefono|móvil|movil|web|portfolio|portafolio)/, 'contacto correo electrónico teléfono sitio web portafolio'],
+  [/(ubicaci|dónde vive|donde vive|localidad|ciudad|reside|vive)/, 'ubicación base barcelona vilamajor']
+];
+
+function expandQuery(q){
+  let out = q;
+  const ql = q.toLowerCase();
+  for(const [re, extra] of QUERY_SYNONYMS){
+    if(re.test(ql)) out += ' ' + extra;
+  }
+  return out;
+}
+
+function answerLocal(q){
+  const md = fullMarkdown;
+  if(!md){
+    return 'Todavía no se ha cargado <code>flavio.md</code>. Espera un momento y vuelve a intentarlo.';
+  }
+
+  const ql = q.toLowerCase();
+  const blocks = [];
+
+  const mentionsSports = /(deport|mountainboard|balonmano|ima\b|asociaci)/.test(ql);
+  const mentionsWork = /(empresa|trabaj|laboral|empleo|cargo|puesto|compañ|compan|trayectoria|currículum|curriculum)/.test(ql);
+  const mentionsExperience = /experiencia/.test(ql);
+
+  const wantsCompanies = mentionsWork || (mentionsExperience && !mentionsSports);
+  const wantsSports = mentionsSports || (mentionsExperience && !mentionsWork);
+  const wantsSkills = /(habilidad|competencia|stack|tecnolog|sabe|conocimiento|herramienta|lenguaje)/.test(ql);
+  const wantsEducation = /(estudi|formaci|educaci|titul|universidad|colegio|instituto|certific|curso)/.test(ql);
+  const wantsHeadline = /(headline|titular|profesi|ocupaci|qué hace|que hace)/.test(ql);
+  const wantsContact = /(contact|email|correo|teléfono|telefono|móvil|movil|web|portfolio|portafolio|linkedin)/.test(ql);
+  const wantsLocation = /(ubicaci|dónde vive|donde vive|localidad|ciudad|reside|vive)/.test(ql);
+  const wantsTeaching = /(docen|profesor|docente|audiovisual|fotograf|televisi|realizaci|tecnocasa|comercial|ventas)/.test(ql);
+
+  if(wantsCompanies){
+    const companies = extractCompanies(md);
+    if(companies.length){
+      blocks.push(`<strong>Empresas y roles (sección 4 de flavio.md):</strong><ul>${companies.map(c=>`<li><strong>${escapeHtml(c.name)}</strong>${c.period?` — <span style="color:var(--muted)">${escapeHtml(c.period)}</span>`:''}</li>`).join('')}</ul>`);
+    }
+    blocks.push('También es fundador y director de <strong>El Sot Mountainboard Center</strong>, presidente de la <strong>Associació Catalana de Mountainboard</strong> y fue <strong>International Relations Manager</strong> de la <strong>IMA</strong>.');
+  }
+
+  if(wantsSports){
+    const sports = extractSectionBullets(md, 5);
+    if(sports.length){
+      blocks.push(`<strong>Gestión deportiva y asociacionismo (sección 5):</strong>${renderSection(sports)}`);
+    }
+  }
+
+  if(wantsTeaching){
+    const teaching = extractSectionBullets(md, 6);
+    if(teaching.length){
+      blocks.push(`<strong>Docencia, audiovisual y comercial (sección 6):</strong>${renderSection(teaching)}`);
+    }
+  }
+
+  if(wantsSkills){
+    const skills = extractSkills(md);
+    if(skills.length){
+      blocks.push(`<strong>Habilidades técnicas (sección 3.1):</strong><ul>${skills.map(s=>`<li>${escapeHtml(s)}</li>`).join('')}</ul>`);
+    }
+  }
+
+  if(wantsEducation){
+    const education = extractEducation(md);
+    if(education.length){
+      blocks.push(`<strong>Formación y certificaciones (sección 7):</strong><ul>${education.map(e=>`<li>${escapeHtml(e)}</li>`).join('')}</ul>`);
+    }
+  }
+
+  if(wantsHeadline){
+    const headline = extractField(md, 'Titular profesional');
+    if(headline) blocks.push(`<strong>Titular profesional:</strong> ${escapeHtml(headline)}`);
+  }
+
+  if(wantsContact){
+    const fields = [
+      { label: 'Correo electrónico', value: extractField(md, 'Correo electrónico de contacto') },
+      { label: 'Teléfono', value: extractField(md, 'Teléfono de contacto') },
+      { label: 'Sitio web', value: extractField(md, 'Sitio web / Portafolio') }
+    ].filter(f => f.value);
+    if(fields.length){
+      blocks.push(`<strong>Contacto:</strong><ul>${fields.map(f=>`<li>${escapeHtml(f.label)}: ${escapeHtml(f.value)}</li>`).join('')}</ul>`);
+    }
+  }
+
+  if(wantsLocation){
+    const location = extractField(md, 'Ubicación base');
+    if(location) blocks.push(`<strong>Ubicación:</strong> ${escapeHtml(location)}`);
+  }
+
+  if(blocks.length){
+    return `<div style="line-height:1.6">${blocks.join('<div style="margin-top:.75rem"></div>')}</div>`;
+  }
+
+  const results = index.search(expandQuery(q), 6);
+  if(results.length===0){
+    return 'No encontré información sobre eso en <code>flavio.md</code>. Prueba con: <em>“¿en qué empresas ha trabajado?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su titular profesional?”</em> o <em>“¿cómo contactarlo?”</em>.';
+  }
+
+  const list = results.map(r=>{
     const meta = r.meta;
-    let html = `<strong>${escapeHtml(meta.name)}</strong>`;
-    html += ` <span style="font-size:.78rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.source)}</span>`;
-    return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}<div style="font-size:.85rem;margin-top:.25rem;color:var(--muted)">${escapeHtml(r.text.substring(0,400))}${r.text.length>400?'…':''}</div></div>`;
+    return `<div style="margin:.45rem 0;padding:.55rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;"><strong>${escapeHtml(meta.name)}</strong><div style="font-size:.85rem;margin-top:.3rem;color:var(--muted)">${escapeHtml(r.text.substring(0,500))}${r.text.length>500?'…':''}</div></div>`;
   }).join('');
-  const scores = results.slice(0,3).map(r=>Math.round(r.score*100)).join(', ');
-  return `Información sobre Flavio Nottalgiovanni Sambucetti:<br>${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
+  return `<div style="line-height:1.5">Información relevante de <code>flavio.md</code>:${list}</div>`;
 }
 
 // ---------- Workers AI (backend Cloudflare) ----------
+function formatAnswer(text){
+  return escapeHtml(text)
+    .replace(/\n{2,}/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+}
+
 async function answerWithAI(q){
   try{
-    const results = index.search(q, 15);
-    const context = results.length
-      ? results.map(r => `- ${r.meta.name}\n  ${r.text.substring(0,500)}`).join('\n\n')
-      : 'No hay contexto disponible.';
+    // flavio.md es pequeño (~10 KB): se envía completo para que el modelo
+    // no dependa de una recuperación TF-IDF que puede fallar.
+    const context = fullMarkdown;
+    if(!context){
+      return answerLocal(q);
+    }
 
-    const res = await fetch(`${API_BASE}/api/query`, {
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body: JSON.stringify({ question: q, context })
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 45000);
+    let res;
+    try{
+      res = await fetch(`${API_BASE}/api/query`, {
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body: JSON.stringify({ question: q, context }),
+        signal: controller.signal
+      });
+    }finally{
+      clearTimeout(timer);
+    }
+
     if(!res.ok){
       const err = await res.json().catch(()=>({}));
       throw new Error(err.error || `Error ${res.status}`);
     }
+
     const data = await res.json();
 
-    if(data.fallback){
+    if(data.fallback || !data.answer){
+      const reason = data.error ? ` (${escapeHtml(String(data.error))})` : '';
       return answerLocal(q) +
-        `<div style="margin-top:.6rem;font-size:.78rem;color:var(--danger)">⚠️ Workers AI no disponible (${escapeHtml(String(data.error||''))}). Mostrando resultados locales.</div>`;
+        `<div style="margin-top:.7rem;font-size:.78rem;color:var(--muted)">📄 Respuesta extraída directamente de <code>flavio.md</code>${reason}.</div>`;
     }
 
-    let html = `<div style="font-size:0.95rem; line-height:1.6;">${escapeHtml(data.answer||'')}</div>`;
-
-    if(data.results && data.results.length){
-      html += `<div style="margin-top:1rem; border-top:1px solid var(--border); padding-top:0.75rem;">
-        <div style="font-size:0.78rem; color:var(--muted); margin-bottom:0.5rem;">📚 Fuentes de Flavio:</div>
-        ${data.results.slice(0,8).map(r=>{
-          const meta = r.meta || r;
-          return `<div style="margin:.3rem 0;padding:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:0.88rem;">
-            <strong>${escapeHtml(meta.name)}</strong>
-            <span style="font-size:.72rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.source)}</span>
-          </div>`;
-        }).join('')}
-      </div>`;
-    }
+    let html = `<div style="font-size:0.95rem; line-height:1.6;">${formatAnswer(data.answer)}</div>`;
 
     if(data.model){
-      html += `<div style="margin-top:0.5rem;font-size:0.72rem;color:var(--muted)">Generado con ${data.model} (Workers AI)</div>`;
+      html += `<div style="margin-top:0.5rem;font-size:0.72rem;color:var(--muted)">Generado con ${escapeHtml(data.model)} (Workers AI) · Fuente: flavio.md</div>`;
     }
 
     return html;
   }catch(err){
-    return answerLocal(q) + `<div style="margin-top:.6rem;font-size:.78rem;color:var(--danger)">⚠️ Backend no disponible (${escapeHtml(String(err.message))}). Modo local activado.</div>`;
+    const message = err && err.name === 'AbortError'
+      ? 'Workers AI tardó demasiado en responder'
+      : String(err.message || err);
+    return answerLocal(q) +
+      `<div style="margin-top:.7rem;font-size:.78rem;color:var(--muted)">📄 Respuesta extraída directamente de <code>flavio.md</code> (${escapeHtml(message)}).</div>`;
   }
 }
 
