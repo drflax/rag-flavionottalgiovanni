@@ -24,20 +24,13 @@ export const onRequestPost = async ({ env, request }) => {
       });
     }
 
-    const systemPrompt = `Eres un asistente que responde preguntas SOLO sobre ${PERSONA}.
+    const prompt = `Responde sobre ${PERSONA} usando SOLO este contexto:
 
-Tienes este contexto extraído de su archivo flavio.md:
 ${context}
 
-REGLAS OBLIGATORIAS:
-1. Responde SOLO sobre ${PERSONA}.
-2. Usa EXCLUSIVAMENTE la información del contexto de arriba.
-3. Si el contexto menciona empresas (REVOLVE, Gabpersam, Muki, Digitalgrow, etc.), debes mencionarlas directamente.
-4. Si el contexto tiene la respuesta, NO digas "no tengo información".
-5. Responde en español, claro y conciso.
-6. No inventes datos.
+Pregunta: ${question}
 
-Pregunta: ${question}`;
+Reglas: Responde en español. Si el contexto tiene la respuesta, dila directamente. No digas "no tengo información" si el contexto la contiene. No inventes datos.`;
 
     let answer = '';
     let usedModel = null;
@@ -46,9 +39,9 @@ Pregunta: ${question}`;
     for (const model of AI_MODELS) {
       try {
         const aiResponse = await env.AI.run(model, {
-          prompt: systemPrompt,
+          prompt,
           max_tokens: 600,
-          temperature: 0.2
+          temperature: 0.1
         });
         answer = aiResponse.response || String(aiResponse || '');
         usedModel = model;
