@@ -334,10 +334,6 @@ document.getElementById('composer').onsubmit = async (e)=>{
   }
 };
 
-// Init
-document.getElementById('btnOpenData').style.display='none';
-document.getElementById('btnClear').style.display='none';
-
 loadMarkdown().then(count=>{
   if(count>0){
     renderBot(`Listo. He cargado los datos de <strong>Flavio Nottalgiovanni Sambucetti</strong> desde flavio.md (${count} secciones). Pregúntame lo que quieras.<br><br>Ejemplos: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su headline?”</em>`);
