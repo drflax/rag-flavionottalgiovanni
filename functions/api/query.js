@@ -36,6 +36,7 @@ INSTRUCCIONES IMPORTANTES:
 - Usa SOLO la información del contexto proporcionado.
 - Si la respuesta no está en el contexto, di que no lo sabes.
 - No inventes datos, cargos, empresas, fechas ni habilidades.
+- Si el contexto menciona nombres de empresas (como REVOLVE, Gabpersam, Muki, Digitalgrow, etc.), úsalos directamente en tu respuesta.
 
 Contexto de ${PERSONA}:
 ${context}`;

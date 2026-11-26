@@ -83,7 +83,7 @@ class RagIndex {
     const denom = Math.sqrt(na)*Math.sqrt(nb);
     return denom===0?0:dot/denom;
   }
-  search(q, topK=8){
+  search(q, topK=10){
     const qTokens = tokenize(q);
     const qVec = this.queryVector(qTokens);
     const scored = [];
@@ -159,7 +159,7 @@ async function loadMarkdown(){
     const res = await fetch(MD_URL, { cache: 'no-cache' });
     
     if(res.status === 404){
-      throw new Error('Archivo flavio.md no encontrado en el servidor (404). Verifica que el archivo esté en la raíz del repositorio.');
+      throw new Error('Archivo flavio.md no encontrado en el servidor (404).');
     }
     if(!res.ok){
       throw new Error(`Error HTTP ${res.status} al cargar flavio.md`);
@@ -209,9 +209,9 @@ async function loadMarkdown(){
 
 // ---------- Respuesta local (TF-IDF) ----------
 function answerLocal(q){
-  const results = index.search(q, 6);
+  const results = index.search(q, 10);
   if(results.length===0){
-    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti en el archivo flavio.md.';
+    return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti en el archivo flavio.md.<br><br>Intenta preguntar de forma más específica, por ejemplo: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>';
   }
   const seen = new Set();
   const items = [];
@@ -220,13 +220,13 @@ function answerLocal(q){
     if(seen.has(key)) continue;
     seen.add(key);
     items.push(r);
-    if(items.length>=5) break;
+    if(items.length>=6) break;
   }
   const list = items.map(r=>{
     const meta = r.meta;
     let html = `<strong>${escapeHtml(meta.name)}</strong>`;
     html += ` <span style="font-size:.78rem;opacity:.6">• ${Math.round(r.score*100)}% • ${escapeHtml(meta.source)}</span>`;
-    return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}<div style="font-size:.85rem;margin-top:.25rem;color:var(--muted)">${escapeHtml(r.text.substring(0,200))}${r.text.length>200?'…':''}</div></div>`;
+    return `<div style="margin:.45rem 0;padding:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">${html}<div style="font-size:.85rem;margin-top:.25rem;color:var(--muted)">${escapeHtml(r.text.substring(0,300))}${r.text.length>300?'…':''}</div></div>`;
   }).join('');
   const scores = results.slice(0,3).map(r=>Math.round(r.score*100)).join(', ');
   return `Información sobre Flavio Nottalgiovanni Sambucetti:<br>${list}<div style="margin-top:.6rem;font-size:.78rem;color:var(--muted)">Relevancia: ${scores}</div>`;
@@ -235,7 +235,7 @@ function answerLocal(q){
 // ---------- Workers AI (backend Cloudflare) ----------
 async function answerWithAI(q){
   try{
-    const results = index.search(q, 8);
+    const results = index.search(q, 10);
     const context = results.length
       ? results.map(r => `- ${r.meta.name}\n  ${r.text}`).join('\n\n')
       : 'No hay contexto disponible.';
@@ -261,7 +261,7 @@ async function answerWithAI(q){
     if(data.results && data.results.length){
       html += `<div style="margin-top:1rem; border-top:1px solid var(--border); padding-top:0.75rem;">
         <div style="font-size:0.78rem; color:var(--muted); margin-bottom:0.5rem;">📚 Fuentes de Flavio:</div>
-        ${data.results.slice(0,5).map(r=>{
+        ${data.results.slice(0,6).map(r=>{
           const meta = r.meta || r;
           return `<div style="margin:.3rem 0;padding:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:0.88rem;">
             <strong>${escapeHtml(meta.name)}</strong>
@@ -335,6 +335,8 @@ document.getElementById('composer').onsubmit = async (e)=>{
 };
 
 // Init
+document.getElementById('btnOpenData').style.display='none';
+document.getElementById('btnClear').style.display='none';
 
 loadMarkdown().then(count=>{
   if(count>0){
