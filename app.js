@@ -439,7 +439,8 @@ function answerLocal(q){
 function formatAnswer(text){
   let safe = escapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^\s*[*\-]\s+/gm, '• ');
+    .replace(/^\s*[*\-]\s+/gm, '• ')
+    .replace(/\s+\*\s+/g, '<br>• ');
   return safe.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
 }
 
