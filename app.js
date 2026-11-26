@@ -25,7 +25,9 @@ const STOPWORDS = new Set([
   'now','is','are','was','were','be','been','being','have','has','had','having','do','does','did','doing',
   'i','me','my','myself','we','our','ours','you','your','yours','he','him','his','she','her','hers','it','its',
   'they','them','their','theirs','what','which','who','whom','this','that','these','those','am','can','could',
-  'should','would','may','might','must','shall'
+  'should','would','may','might','must','shall',
+  'qué','quién','quiénes','cuál','cuáles','cómo','dónde','cuándo','cuánto','cuánta','cuántos','cuántas','adónde',
+  'hay','ha','han','he','hemos','había','habían','tiene','tienen','tengo','tienes','tenemos','hace','hacen','hizo','hicieron'
 ]);
 
 function tokenize(text){
@@ -120,11 +122,11 @@ function parseMarkdown(mdText){
     
     let cleanText = trimmed
       .replace(/^#{1,3}\s+/gm, '')
+      .replace(/^\s*[-*+]\s+/gm, '• ')
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/`([^`]+)`/g, '$1')
-      .replace(/^\s*[-*+]\s+/gm, '• ')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
     
@@ -234,6 +236,15 @@ function cleanMdLine(line){
     .trim();
 }
 
+function sectionBody(doc){
+  const name = doc.meta && doc.meta.name ? doc.meta.name : '';
+  let body = doc.text || '';
+  if(name && body.startsWith(name)){
+    body = body.slice(name.length).replace(/^[.\s]+/, '');
+  }
+  return body;
+}
+
 function extractCompanies(md){
   const section = sectionByNumber(md, 4);
   const lines = section.split('\n');
@@ -308,7 +319,7 @@ const QUERY_SYNONYMS = [
   [/(estudi|formaci|educaci|titul|universidad|certific|curso)/, 'formación académica educación titulación certificación idep bcn'],
   [/(headline|titular|profesi|ocupaci|qué hace|que hace)/, 'titular profesional desarrollador full stack gestor deportivo'],
   [/(contact|email|correo|teléfono|telefono|móvil|movil|web|portfolio|portafolio)/, 'contacto correo electrónico teléfono sitio web portafolio'],
-  [/(ubicaci|dónde vive|donde vive|localidad|ciudad|reside|vive)/, 'ubicación base barcelona vilamajor']
+  [/(ubicaci|dónde vive|donde vive|localidad|ciudad|residencia|\breside\b|\bvive\b)/, 'ubicación base barcelona vilamajor']
 ];
 
 function expandQuery(q){
@@ -339,7 +350,7 @@ function answerLocal(q){
   const wantsEducation = /(estudi|formaci|educaci|titul|universidad|colegio|instituto|certific|curso)/.test(ql);
   const wantsHeadline = /(headline|titular|profesi|ocupaci|qué hace|que hace)/.test(ql);
   const wantsContact = /(contact|email|correo|teléfono|telefono|móvil|movil|web|portfolio|portafolio|linkedin)/.test(ql);
-  const wantsLocation = /(ubicaci|dónde vive|donde vive|localidad|ciudad|reside|vive)/.test(ql);
+  const wantsLocation = /(ubicaci|dónde vive|donde vive|localidad|ciudad|residencia|\breside\b|\bvive\b)/.test(ql);
   const wantsTeaching = /(docen|profesor|docente|audiovisual|fotograf|televisi|realizaci|tecnocasa|comercial|ventas)/.test(ql);
 
   if(wantsCompanies){
@@ -403,23 +414,33 @@ function answerLocal(q){
     return `<div style="line-height:1.6">${blocks.join('<div style="margin-top:.75rem"></div>')}</div>`;
   }
 
-  const results = index.search(expandQuery(q), 6);
-  if(results.length===0){
+  const results = index.search(expandQuery(q), 8);
+  const qTokens = tokenize(q);
+  const relevant = results.filter(r=>{
+    if(qTokens.length===0) return false;
+    const docTokens = new Set(r.tokens);
+    const matched = qTokens.filter(t=>docTokens.has(t)).length;
+    return matched / qTokens.length >= 0.5;
+  });
+
+  if(relevant.length===0){
     return 'No encontré información sobre eso en <code>flavio.md</code>. Prueba con: <em>“¿en qué empresas ha trabajado?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>, <em>“¿cuál es su titular profesional?”</em> o <em>“¿cómo contactarlo?”</em>.';
   }
 
-  const list = results.map(r=>{
+  const list = relevant.slice(0,6).map(r=>{
     const meta = r.meta;
-    return `<div style="margin:.45rem 0;padding:.55rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;"><strong>${escapeHtml(meta.name)}</strong><div style="font-size:.85rem;margin-top:.3rem;color:var(--muted)">${escapeHtml(r.text.substring(0,500))}${r.text.length>500?'…':''}</div></div>`;
+    const body = sectionBody(r);
+    return `<div style="margin:.45rem 0;padding:.55rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;"><strong>${escapeHtml(meta.name)}</strong><div style="font-size:.85rem;margin-top:.3rem;color:var(--muted)">${escapeHtml(body.substring(0,500))}${body.length>500?'…':''}</div></div>`;
   }).join('');
   return `<div style="line-height:1.5">Información relevante de <code>flavio.md</code>:${list}</div>`;
 }
 
 // ---------- Workers AI (backend Cloudflare) ----------
 function formatAnswer(text){
-  return escapeHtml(text)
-    .replace(/\n{2,}/g, '<br><br>')
-    .replace(/\n/g, '<br>');
+  let safe = escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\s*[*\-]\s+/gm, '• ');
+  return safe.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
 }
 
 async function answerWithAI(q){
@@ -453,9 +474,10 @@ async function answerWithAI(q){
     const data = await res.json();
 
     if(data.fallback || !data.answer){
-      const reason = data.error ? ` (${escapeHtml(String(data.error))})` : '';
-      return answerLocal(q) +
-        `<div style="margin-top:.7rem;font-size:.78rem;color:var(--muted)">📄 Respuesta extraída directamente de <code>flavio.md</code>${reason}.</div>`;
+      const note = data.refusal
+        ? '📄 Sin datos sobre eso en <code>flavio.md</code>.'
+        : `📄 Respuesta extraída directamente de <code>flavio.md</code>${data.error ? ` (${escapeHtml(String(data.error))})` : ''}.`;
+      return answerLocal(q) + `<div style="margin-top:.7rem;font-size:.78rem;color:var(--muted)">${note}</div>`;
     }
 
     let html = `<div style="font-size:0.95rem; line-height:1.6;">${formatAnswer(data.answer)}</div>`;

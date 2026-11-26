@@ -8,12 +8,10 @@
 
 const PERSONA = 'Flavio Nottalgiovanni Sambucetti';
 
-// Modelos verificados en Workers AI. El primero es el más fiable.
+// Modelos actuales de Workers AI. El primero es el más fiable.
 const AI_MODELS = [
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  '@cf/meta/llama-4-scout-17b-16e-instruct',
-  '@cf/meta/llama-3.2-3b-instruct',
-  '@cf/meta/llama-3.2-1b-instruct'
+  '@cf/meta/llama-4-scout-17b-16e-instruct'
 ];
 
 const MAX_CONTEXT_CHARS = 30000;
