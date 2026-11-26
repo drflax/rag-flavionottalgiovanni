@@ -4,12 +4,8 @@
  */
 
 const AI_MODELS = [
-  '@cf/meta/llama-3.2-1b-instruct',
-  '@cf/meta/llama-3.2-3b-instruct',
-  '@cf/meta/llama-3.1-8b-instruct-fp8',
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  '@cf/meta/llama-4-scout-17b-16e-instruct',
-  '@cf/meta/llama-2-7b-chat-hf-lora'
+  '@cf/meta/llama-4-scout-17b-16e-instruct'
 ];
 
 const PERSONA = 'Flavio Nottalgiovanni Sambucetti';
