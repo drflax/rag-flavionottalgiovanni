@@ -2,13 +2,10 @@
  * Cloudflare Pages Function — POST /api/query
  * RAG para Flavio Nottalgiovanni Sambucetti.
  * Recibe { question, context } y genera respuesta con Workers AI.
- *
- * Body: { question: string, context?: string }
- * Respuesta: { answer: string, model: string }
  */
 
 const AI_MODELS = [
-  '@cf/meta/llama-3.2-1b-instruct',
+  '@cf/meta/llama-3.2-1b-instruct',   // primero: mejor siguiendo instrucciones
   '@cf/meta/llama-3.2-3b-instruct',
   '@cf/meta/llama-3.1-8b-instruct-fp8',
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
@@ -28,20 +25,19 @@ export const onRequestPost = async ({ env, request }) => {
       });
     }
 
-    const systemPrompt = `Eres un asistente experto que responde preguntas SOLO sobre ${PERSONA}, basándote en su archivo Markdown (flavio.md).
+    const systemPrompt = `Eres un asistente que responde preguntas SOLO sobre ${PERSONA}.
 
-INSTRUCCIONES IMPORTANTES:
-- Responde ÚNICAMENTE sobre ${PERSONA}. No inventes datos sobre otras personas.
-- Responde en español, de forma clara y concisa.
-- Usa SOLO la información del contexto proporcionado.
-- Si la respuesta no está en el contexto, di que no lo sabes.
-- No inventes datos, cargos, empresas, fechas ni habilidades.
-- Si el contexto menciona nombres de empresas (como REVOLVE, Gabpersam, Muki, Digitalgrow, etc.), úsalos directamente en tu respuesta.
+REGLAS OBLIGATORIAS:
+1. Usa ÚNICAMENTE la información del contexto proporcionado a continuación.
+2. Si el contexto menciona empresas (REVOLVE, Gabpersam, Muki, Digitalgrow, etc.), debes mencionarlas directamente.
+3. No digas "no tengo información" si el contexto contiene la respuesta.
+4. Responde en español, claro y conciso.
+5. No inventes datos.
 
-Contexto de ${PERSONA}:
+CONTEXTO DE ${PERSONA} (extraído de su perfil LinkedIn):
 ${context}`;
 
-    const userPrompt = `Pregunta sobre ${PERSONA}: ${question}`;
+    const userPrompt = `Pregunta: ${question}`;
 
     let answer = '';
     let usedModel = null;
@@ -52,8 +48,8 @@ ${context}`;
       try {
         const aiResponse = await env.AI.run(model, {
           prompt: `${systemPrompt}\n\n${userPrompt}`,
-          max_tokens: 512,
-          temperature: 0.7
+          max_tokens: 600,
+          temperature: 0.3
         });
         answer = aiResponse.response || String(aiResponse || '');
         usedModel = model;
@@ -68,7 +64,9 @@ ${context}`;
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
-          ]
+          ],
+          max_tokens: 600,
+          temperature: 0.3
         });
         answer = aiResponse.response || String(aiResponse || '');
         usedModel = model;
@@ -83,8 +81,7 @@ ${context}`;
       return new Response(JSON.stringify({
         answer: null,
         fallback: true,
-        error: lastAiError?.message || 'Todos los modelos de Workers AI fallaron',
-        message: 'Workers AI no disponible.'
+        error: lastAiError?.message || 'Todos los modelos fallaron'
       }), {
         headers: { 'content-type': 'application/json' }
       });

@@ -209,7 +209,7 @@ async function loadMarkdown(){
 
 // ---------- Respuesta local (TF-IDF) ----------
 function answerLocal(q){
-  const results = index.search(q, 10);
+  const results = index.search(q, 15);
   if(results.length===0){
     return 'No encontré información relevante sobre Flavio Nottalgiovanni Sambucetti en el archivo flavio.md.<br><br>Intenta preguntar de forma más específica, por ejemplo: <em>“¿en qué empresas ha trabajado Flavio?”</em>, <em>“¿qué habilidades tiene?”</em>, <em>“¿dónde estudió?”</em>';
   }
@@ -235,7 +235,7 @@ function answerLocal(q){
 // ---------- Workers AI (backend Cloudflare) ----------
 async function answerWithAI(q){
   try{
-    const results = index.search(q, 10);
+    const results = index.search(q, 15);
     const context = results.length
       ? results.map(r => `- ${r.meta.name}\n  ${r.text}`).join('\n\n')
       : 'No hay contexto disponible.';
