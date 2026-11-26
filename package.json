@@ -2,7 +2,7 @@
   "name": "rag-linkedin-csv",
   "version": "1.0.0",
   "private": true,
-  "description": "RAG ligero que se nutre de CSV exportados de LinkedIn. Frontend para Cloudflare Pages.",
+  "description": "Asistente RAG sobre flavio.md con Cloudflare Pages y Workers AI.",
   "scripts": {
     "dev": "wrangler pages dev .",
     "deploy": "wrangler pages deploy .",

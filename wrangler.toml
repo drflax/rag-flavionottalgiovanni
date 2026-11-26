@@ -6,9 +6,5 @@ pages_build_output_dir = "."
 [ai]
 binding = "AI"
 
-[[kv_namespaces]]
-binding = "LINKEDIN_KV"
-id = "61d92ff1db7a4dccb6fa929890199b15"
-
 [observability]
 enabled = true
